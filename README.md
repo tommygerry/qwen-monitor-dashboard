@@ -46,6 +46,27 @@ Konfiguration über Umgebungsvariablen:
 
 Die IPs sind Tailscale-Adressen — einfach an die eigene Umgebung anpassen.
 
+## Betrieb auf TrueNAS Scale (immer erreichbar)
+
+Der Proxy kann dauerhaft auf der NAS laufen, damit das Dashboard auch lebt, wenn der Laptop schläft.
+
+**Variante A — Custom App per Bind-Mount (kein Build nötig):**
+1. Code auf ein Dataset kopieren, z. B. `/mnt/apps/qwen-monitor`
+2. Apps → Discover Apps → **Custom App**:
+   - Image: `python`, Tag: `3.12-alpine`
+   - Container entrypoint arguments: `["monitor.py"]`
+   - Path: Host `/mnt/apps/qwen-monitor` → Container `/app`
+   - Port: `8765`
+   - Environment: `STRATA_URL`, `MACMON_URL` (LAN-IPs des Mac Studio, falls beide im gleichen Netz)
+
+**Variante B — eigenes Image bauen:**
+```bash
+docker build -t qwen-monitor .
+```
+dann in der Custom App `qwen-monitor:latest` als Image angeben.
+
+Handy im WLAN öffnet dann `http://<truenas-lan-ip>:8765`. Wenn Strata/macmon nur über Tailscale erreichbar sind, installiere den offiziellen Tailscale-App auf TrueNAS — dann sieht die NAS das Mac Studio unter dessen 100.x-Adresse.
+
 ## macmon JSON-Felder (Referenz)
 
 `temp.cpu_temp_avg`, `temp.gpu_temp_avg`, `cpu_power`, `gpu_power`, `all_power`, `sys_power`, `fans[].name/rpm`, `soc.chip_name`, `gpu_active_ratio`
