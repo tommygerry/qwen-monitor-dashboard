@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Qwen Monitor</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --border: #d9dde3; --text: #1c2128;
+    --muted: #6b7280; --accent: #2563eb; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0f1115; --card:#171a20; --border:#2a2f38; --text:#e5e7eb; --muted:#8b93a1; --accent:#60a5fa; --ok:#34d399; --warn:#fbbf24; --bad:#f87171; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui, sans-serif; }
+  header { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:12px 16px; border-bottom:1px solid var(--border); }
+  h1 { font-size:16px; margin:0; }
+  .model { color:var(--muted); font-size:12px; }
+  .pill { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); font-size:12px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--muted); }
+  .dot.ok { background:var(--ok); } .dot.bad { background:var(--bad); }
+  select, button { font:inherit; padding:4px 8px; border-radius:6px; border:1px solid var(--border); background:var(--card); color:var(--text); }
+  main { padding:16px; max-width:1100px; margin:0 auto; }
+  .status { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 14px; border:1px solid var(--border); border-radius:10px; background:var(--card); margin-bottom:14px; }
+  .status .label { font-weight:600; }
+  .status .detail { color:var(--muted); font-size:12px; }
+  .bar { flex:1; min-width:120px; height:8px; border-radius:4px; background:var(--border); overflow:hidden; }
+  .bar i { display:block; height:100%; width:0%; background:var(--accent); transition:width .3s; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px; margin-bottom:14px; }
+  .card { border:1px solid var(--border); border-radius:10px; background:var(--card); padding:10px 12px; }
+  .card .k { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+  .card .v { font-size:20px; font-weight:600; margin-top:2px; }
+  .card .s { color:var(--muted); font-size:11px; margin-top:2px; }
+  .spark { margin-bottom:14px; border:1px solid var(--border); border-radius:10px; background:var(--card); padding:12px; }
+  .spark svg { width:100%; height:60px; }
+  .spark .k { color:var(--muted); font-size:11px; text-transform:uppercase; }
+  .totals { display:flex; gap:14px; flex-wrap:wrap; color:var(--muted); font-size:12px; margin-bottom:14px; }
+  .totals b { color:var(--text); }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th, td { padding:6px 8px; border-bottom:1px solid var(--border); text-align:left; }
+  th { color:var(--muted); font-weight:600; }
+  td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  .err { padding:12px; border:1px solid var(--bad); background:var(--card); color:var(--bad); border-radius:10px; margin-bottom:14px; }
+  @media (max-width:600px) { .card .v { font-size:16px; } main { padding:12px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Qwen Monitor</h1>
+  <span class="model" id="model">…</span>
+  <span class="pill"><span class="dot" id="conn-dot"></span><span id="conn-text">Verbinde…</span></span>
+  <span class="pill" id="engine-pill">Engine …</span>
+  <select id="interval" aria-label="Aktualisierungsintervall">
+    <option value="1">1 s</option>
+    <option value="2" selected>2 s</option>
+    <option value="5">5 s</option>
+    <option value="10">10 s</option>
+  </select>
+  <button id="now">Jetzt</button>
+  <span class="model" id="updated"></span>
+</header>
+<main>
+  <div class="err" id="error" hidden></div>
+  <div class="status">
+    <span class="label" id="state-label">—</span>
+    <span class="detail" id="state-detail"></span>
+    <div class="bar"><i id="state-bar"></i></div>
+  </div>
+  <div class="grid" id="cards"></div>
+  <div class="spark"><span class="k">tok/s · GPU-Auslastung (letzte 60 Samples)</span>
+    <svg id="spark-tok" viewBox="0 0 300 60"></svg>
+    <svg id="spark-gpu" viewBox="0 0 300 60"></svg>
+  </div>
+  <div class="spark"><span class="k">Mac Studio: Die-Temperatur · GPU · Leistung (macmon)</span>
+    <svg id="spark-die" viewBox="0 0 300 60"></svg>
+    <svg id="spark-gputemp" viewBox="0 0 300 60"></svg>
+    <svg id="spark-power" viewBox="0 0 300 60"></svg>
+  </div>
+  <div class="grid" id="temp-cards"></div>
+  <div class="model" id="temp-note" hidden>Temperaturen kommen von <code>macmon serve</code> auf dem Mac Studio (Port 9090). Falls nicht erreichbar: dort <code>macmon serve --install</code> ausführen.</div>
+  <div class="totals" id="totals"></div>
+  <div class="card">
+    <div class="k">Letzte Anfragen</div>
+    <table>
+      <thead><tr><th>Zeit</th><th class="num">Dauer</th><th class="num">Prompt</th><th class="num">Cache</th><th class="num">Output</th><th class="num">tok/s</th><th class="num">1. Token</th></tr></thead>
+      <tbody id="req-rows"></tbody>
+    </table>
+  </div>
+</main>
+<script>
+let timer = null;
+const tempHist = { die: [], gpu: [], power: [] };
+
+const fmt = (n, d = 0) => n == null ? "—" : Number(n).toLocaleString("de-DE", { maximumFractionDigits: d });
+const gb = (b) => b == null ? "—" : (b / 1073741824).toFixed(1) + " GB";
+const clock = (t) => new Date(t * 1000).toLocaleTimeString("de-DE");
+
+function sparkline(svg, values, color) {
+  if (!values || !values.length) { svg.innerHTML = ""; return; }
+  const vals = values.filter(v => v != null);
+  if (!vals.length) { svg.innerHTML = ""; return; }
+  const min = Math.min(...vals), max = Math.max(...vals), span = (max - min) || 1;
+  const pts = vals.map((v, i) => `${(i / (vals.length - 1)) * 300},${56 - ((v - min) / span) * 52}`).join(" ");
+  svg.innerHTML = `<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5"/>`;
+}
+
+function render(health, m) {
+  document.getElementById("model").textContent = health.model || "";
+  const eng = m.engine || {}, live = m.live || {}, hw = m.hardware || {}, tot = m.totals || {},
+        cache = m.conversation_cache || {}, hist = m.history || {}, reqs = m.requests || [];
+  document.getElementById("engine-pill").textContent =
+    `${eng.engine || "?"} · Kontext ${fmt(eng.context)} · KV ${eng.kv || "?"} · Draft ${eng.drafting || "?"}`;
+
+  // Status
+  let label = live.state || "idle", detail = "", pct = 0;
+  if (!health.loaded) { label = "Modell nicht geladen"; detail = "Eine Nachricht lädt es automatisch."; }
+  else if (live.queued > 0 && label === "idle") { label = "Anfragen in Warteschlange"; detail = `${live.queued}queued`; }
+  else if (label === "reading") {
+    label = "Prompt lesen";
+    if (live.prompt_total) { pct = 100 * (live.prompt_read || 0) / live.prompt_total; detail = `${fmt(live.prompt_read)} / ${fmt(live.prompt_total)} Tokens`; }
+  } else if (label === "generating") {
+    label = "Generieren";
+    pct = live.max_tokens ? Math.min(100, 100 * (live.generated || 0) / live.max_tokens) : 0;
+    detail = `${fmt(live.generated)} Tokens · ${fmt(live.tok_s, 1)} tok/s`;
+  } else {
+    const last = reqs[0];
+    detail = last ? `letzte: ${fmt(last.output_tokens)} Tokens bei ${fmt(last.decode_tok_s, 1)} tok/s` : "keine Anfragen";
+  }
+  document.getElementById("state-label").textContent = label;
+  document.getElementById("state-detail").textContent = detail;
+  document.getElementById("state-bar").style.width = pct + "%";
+
+  // Kennzahlen (Durchschnitte wie im Original: aus totals)
+  const avgDecode = tot.decode_ms > 0 && tot.output_tokens > 0 ? tot.output_tokens / (tot.decode_ms / 1000) : null;
+  const readTokens = (tot.prompt_tokens || 0) - (tot.reused || 0);
+  const avgPrefill = tot.prompt_ms > 0 && readTokens > 0 ? readTokens / (tot.prompt_ms / 1000) : null;
+  const hitRate = tot.prompt_tokens ? 100 * (tot.reused || 0) / tot.prompt_tokens : null;
+  const cards = [
+    ["Live tok/s", fmt(live.tok_s, 1), live.tok_s_mean != null ? `ø ${fmt(live.tok_s_mean, 1)}` : ""],
+    ["Decode ø", fmt(avgDecode, 1), "seit Serverstart"],
+    ["Prefill ø", fmt(avgPrefill, 1), `${fmt(readTokens)} neue Prompt-Tokens`],
+    ["GPU", fmt(hw.gpu_util, 0) + "%", hw.gpu_mem_used != null ? gb(hw.gpu_mem_used) + " / " + gb(hw.gpu_mem_total) : ""],
+    ["VRAM frei", fmt(eng.vram_free_mib) + " MiB", eng.gpu_vram_total_mib ? "" : ""],
+    ["RAM", gb(hw.ram_used), "von " + gb(hw.ram_total)],
+    ["Cache-Hit", hitRate != null ? fmt(hitRate, 1) + "%" : "—", `reused ${fmt(tot.reused)}`],
+    ["Drafts", tot.drafts_accepted != null && tot.drafts_offered ? fmt(100 * tot.drafts_accepted / tot.drafts_offered, 0) + "%" : "—", `${fmt(tot.drafts_accepted)} / ${fmt(tot.drafts_offered)} akzeptiert`],
+  ];
+  document.getElementById("cards").innerHTML = cards.map(([k, v, s]) =>
+    `<div class="card"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s || ""}</div></div>`).join("");
+
+  sparkline(document.getElementById("spark-tok"), hist.tok_s, "#2563eb");
+  sparkline(document.getElementById("spark-gpu"), hist.gpu_util, "#16a34a");
+
+  document.getElementById("totals").innerHTML =
+    `<span><b>${fmt(tot.requests)}</b> Anfragen</span>` +
+    `<span><b>${fmt(tot.prompt_tokens)}</b> Prompt-Tokens</span>` +
+    `<span><b>${fmt(tot.output_tokens)}</b> Output-Tokens</span>` +
+    `<span>Cache: <b>${fmt(cache.parked || 0)}</b> geparkte Slots · <b>${fmt(cache.reused_tokens || 0)}</b> Tokens wiederverwendet</span>`;
+
+  document.getElementById("req-rows").innerHTML = reqs.slice(0, 20).map(r =>
+    `<tr><td>${clock(r.time)}</td><td class="num">${fmt(r.duration_s, 1)} s</td>` +
+    `<td class="num">${fmt(r.prompt_tokens)}</td><td class="num">${fmt(r.reused)}</td>` +
+    `<td class="num">${fmt(r.output_tokens)}</td><td class="num">${fmt(r.decode_tok_s, 1)}</td>` +
+    `<td class="num">${fmt(r.first_engine_token_s, 2)} s</td></tr>`).join("");
+
+  document.getElementById("updated").textContent = "Aktualisiert " + new Date().toLocaleTimeString("de-DE");
+}
+
+function renderTemp(t) {
+  const note = document.getElementById("temp-note");
+  if (!t || t.error || !t.temp) { note.hidden = false; return; }
+  note.hidden = true;
+  const die = t.temp.die_temp ?? t.temp.cpu_temp_avg, gpu = t.temp.gpu_temp_avg;
+  const push = (arr, v) => { arr.push(v == null ? 0 : v); if (arr.length > 120) arr.shift(); };
+  push(tempHist.die, die); push(tempHist.gpu, gpu); push(tempHist.power, t.all_power);
+  const lastMax = (arr, v) => arr.length ? Math.max(...arr.filter(x => x != null)) : null;
+  const fans = (t.fans || []).map(f => `${f.name} ${fmt(f.rpm)} rpm`).join(" · ") || "keine/Lüfterlos";
+  const chip = (t.soc && (t.soc.chip_name || t.soc.name)) || "Apple Silicon";
+  document.getElementById("temp-cards").innerHTML = [
+    ["Die/CPU", die != null ? fmt(die, 1) + " °C" : "—", `Max heute ${fmt(lastMax(tempHist.die), 1)} °C · ${chip}`],
+    ["GPU-Temperatur", gpu != null ? fmt(gpu, 1) + " °C" : "—", `Max ${fmt(lastMax(tempHist.gpu), 1)} °C · Auslastung ${fmt(t.gpu_active_ratio != null ? 100 * t.gpu_active_ratio : null, 0)} %`],
+    ["SOC-Leistung", t.all_power != null ? fmt(t.all_power, 1) + " W" : "—", `CPU ${fmt(t.cpu_power, 1)} W · GPU ${fmt(t.gpu_power, 1)} W · ANE ${fmt(t.ane_power, 1)} W`],
+    ["System", t.sys_power != null ? fmt(t.sys_power, 1) + " W" : "—", fans],
+  ].map(([k, v, s]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s || ""}</div></div>`).join("");
+  sparkline(document.getElementById("spark-die"), tempHist.die, "#d97706");
+  sparkline(document.getElementById("spark-gputemp"), tempHist.gpu, "#dc2626");
+  sparkline(document.getElementById("spark-power"), tempHist.power, "#16a34a");
+}
+
+async function poll() {
+  const errEl = document.getElementById("error");
+  try {
+    const h = await (await fetch("/health")).json();
+    const m = await (await fetch("/metrics")).json();
+    if (m.error) throw new Error(m.error);
+    render(h, m);
+    errEl.hidden = true;
+    document.getElementById("conn-dot").className = "dot ok";
+    document.getElementById("conn-text").textContent = "Verbunden";
+  } catch (e) {
+    errEl.hidden = false;
+    errEl.textContent = "Keine Verbindung zum Handy-Server: " + e.message + " — läuft monitor.py, und ist das Handy über Tailscale erreichbar?";
+    document.getElementById("conn-dot").className = "dot bad";
+    document.getElementById("conn-text").textContent = "Getrennt";
+  }
+  try { renderTemp(await (await fetch("/temps")).json()); }
+  catch (e) { renderTemp({ error: e.message }); }
+}
+
+function schedule() {
+  clearTimeout(timer);
+  timer = setInterval(poll, Number(document.getElementById("interval").value) * 1000);
+}
+document.getElementById("interval").addEventListener("change", schedule);
+document.getElementById("now").addEventListener("click", poll);
+poll();
+schedule();
+</script>
+</body>
+</html>

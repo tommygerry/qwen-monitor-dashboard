@@ -1,0 +1,55 @@
+# Qwen Monitor Dashboard
+
+Ein schlankes, responsives Dashboard für den Monitor eines lokalen **Strata**-Servers (Qwen-Modell auf Apple Silicon), das von Handy oder Laptop über Tailscale erreichbar ist — inklusive Live-Temperaturen und Leistung des Mac Studio via [macmon](https://github.com/vladkens/macmon).
+
+## Warum?
+
+Der Strata-Monitor ist nur auf der Server-Seite schön lesbar, und die API sendet keine CORS-Headers — eine direkte HTML-Seite auf dem Handy kann die Daten nicht direkt fetchen. Dieses Projekt stellt einen kleinen Proxy (nur Python-stdlib, keine Dependencies) daneben, der die Dashboard-HTML servt und die Daten endpunkte weiterreicht. Zusätzlich liefert Strata auf Apple Silicon keine GPU-/CPU-Temperaturen (psutil braucht root `powermetrics`) — die kommen von `macmon serve`.
+
+## Architektur
+
+```
+Handy/Laptop-Browser
+      │ http://<host>:8765
+monitor.py  ──► GET /health, /metrics  → Strata (Strata-Server, z.B. :8080)
+      │       GET /temps              → macmon serve (:9090/json)
+```
+
+- `monitor.py` — Server + CORS-Proxy (stdlib, Port 8765)
+- `dashboard.html` — Single-File-Dashboard, Polling alle 1–10 s
+- Anzeigen: Live tok/s, Decode-/Prefill-Ø, GPU-Auslastung, VRAM, RAM, Cache-Hit, Draft-Akzeptanz, letzte Anfragen, Die/GPU-Temperatur, SOC-/System-Leistung, Lüfter
+
+## Voraussetzungen
+
+- Python 3 (nur stdlib)
+- Strata-Server mit `/health` und `/metrics`
+- Für Temperaturen: `macmon` auf dem Mac Studio:
+  ```bash
+  brew install macmon        # tap: steipete/tap
+  sudo macmon serve --install --sudo
+  ```
+
+## Start
+
+```bash
+python3 monitor.py
+# Browser: http://localhost:8765
+```
+
+Konfiguration über Umgebungsvariablen:
+
+| Variable     | Default                        |
+|--------------|--------------------------------|
+| `STRATA_URL` | `http://YOUR_TAILSCALE_IP:8080`   |
+| `MACMON_URL` | `http://YOUR_TAILSCALE_IP:9090/json` |
+| `PORT`       | `8765`                         |
+
+Die IPs sind Tailscale-Adressen — einfach an die eigene Umgebung anpassen.
+
+## macmon JSON-Felder (Referenz)
+
+`temp.cpu_temp_avg`, `temp.gpu_temp_avg`, `cpu_power`, `gpu_power`, `all_power`, `sys_power`, `fans[].name/rpm`, `soc.chip_name`, `gpu_active_ratio`
+
+## Lizenz
+
+MIT
