@@ -40,8 +40,8 @@ Konfiguration über Umgebungsvariablen:
 
 | Variable     | Default                        |
 |--------------|--------------------------------|
-| `STRATA_URL` | `http://YOUR_TAILSCALE_IP:8080`   |
-| `MACMON_URL` | `http://YOUR_TAILSCALE_IP:9090/json` |
+| `STRATA_URL` | `http://100.xx.yy.zz:8080`   |
+| `MACMON_URL` | `http://100.xx.yy.zz:9090/json` |
 | `PORT`       | `8765`                         |
 
 Die IPs sind Tailscale-Adressen — einfach an die eigene Umgebung anpassen.
