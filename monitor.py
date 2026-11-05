@@ -2,7 +2,7 @@
 """Qwen Monitor — jederzeit den Monitor des Qwen-Modells auf dem Handy ablesen.
 
 Steht als kleiner Proxy zwischen Browser und dem Strata-Server auf dem Handy
-(Standard: http://YOUR_TAILSCALE_IP:8080). Der Strata-Server sendet keine CORS-
+(Standard: http://100.xx.yy.zz:8080). Der Strata-Server sendet keine CORS-
 Header, deshalb laufen Dashboard und Datenabruf über diesen gleichen Host.
 
 Start:   python3 monitor.py
@@ -15,8 +15,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import URLError
 from urllib.request import urlopen
 
-STRATA = os.environ.get("STRATA_URL", "http://YOUR_TAILSCALE_IP:8080")
-MACMON = os.environ.get("MACMON_URL", "http://YOUR_TAILSCALE_IP:9090/json")
+STRATA = os.environ.get("STRATA_URL", "http://100.xx.yy.zz:8080")
+MACMON = os.environ.get("MACMON_URL", "http://100.xx.yy.zz:9090/json")
 PORT = int(os.environ.get("PORT", "8765"))
 HERE = os.path.dirname(os.path.abspath(__file__))
 
